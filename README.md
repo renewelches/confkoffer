@@ -3,6 +3,25 @@
 Bundle, encrypt, and ship project configuration files to an S3-compatible
 bucket — and reverse the flow on retrieval.
 
+## The problem
+
+Real projects accumulate sensitive configuration that doesn't belong in
+git: provider credentials, backend configs, `.env` files, local
+overrides, signing keys. Today, teammates onboard a new machine by
+re-running setup scripts from memory, copy-pasting from chat history,
+or DM'ing each other zipped folders. Hopping between your laptop, a
+work desktop, and a CI box means doing it again. It's tedious,
+error-prone, and the "just send me the env file" exchanges are exactly
+the kind of thing security audits flag.
+
+confkoffer is a small, focused tool that solves this in a simple and
+secure way: pack the files you care about, encrypt them with a
+passphrase, push them to a bucket. On any other machine — or after
+wiping yours — pull them back down with one command. No GPG keyrings
+to sync, no shared password manager folders, no zip-on-Slack. The
+bucket can be world-readable as far as confkoffer is concerned;
+confidentiality lives in the passphrase.
+
 The name blends **conf**iguration + **koffer** (German for *suitcase*),
 echoing the English *coffer* (strongbox). A trusted suitcase for your
 configs.
