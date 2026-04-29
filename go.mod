@@ -6,6 +6,7 @@ require (
 	github.com/gobwas/glob v0.2.3
 	github.com/minio/minio-go/v7 v7.1.0
 	golang.org/x/crypto v0.50.0
+	golang.org/x/term v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
