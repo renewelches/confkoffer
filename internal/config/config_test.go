@@ -199,19 +199,8 @@ func TestResolvePasswordOverrideFromFlag(t *testing.T) {
 	}
 }
 
-func TestResolvePasswordOverrideFromEnv(t *testing.T) {
-	t.Setenv(EnvPassword, "from-env")
-	cfg, _ := Load("")
-	cfg.Name = "proj"
-	cfg.Storage.Endpoint = "s3.example.com"
-
-	if err := Resolve(cfg, Overrides{}); err != nil {
-		t.Fatal(err)
-	}
-	if string(cfg.PasswordOverride) != "from-env" {
-		t.Fatalf("PasswordOverride=%q", cfg.PasswordOverride)
-	}
-}
+// CONFKOFFER_PASS is consumed by password.EnvSource at runtime, not by
+// Resolve — keeps config concerns separate from the password subsystem.
 
 func TestValidateName(t *testing.T) {
 	cases := []struct {

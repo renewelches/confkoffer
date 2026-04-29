@@ -256,8 +256,6 @@ func Resolve(cfg *Config, ov Overrides) error {
 
 	if ov.Password.Set {
 		cfg.PasswordOverride = []byte(ov.Password.Value)
-	} else if v, ok := os.LookupEnv(EnvPassword); ok {
-		cfg.PasswordOverride = []byte(v)
 	}
 
 	// Required fields.
