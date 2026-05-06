@@ -1,6 +1,6 @@
 # confkoffer
 
-![confkoffer logo](assets/logo/logo-briefcase.svg)
+<img src="assets/logo/logo-briefcase.svg" alt="confkoffer logo" width="128" />
 
 Bundle, encrypt, and ship project configuration files to an S3-compatible
 bucket — and reverse the flow on retrieval.
