@@ -1,6 +1,6 @@
 # confkoffer
 
-<img src="assets/logo/logo-briefcase.svg" alt="confkoffer logo" width="128" />
+<img src="assets/logo/logo-briefcase.svg" alt="confkoffer logo" width="228" />
 
 Bundle, encrypt, and ship project configuration files to an S3-compatible
 bucket — and reverse the flow on retrieval.
@@ -24,8 +24,8 @@ to sync, no shared password manager folders, no zip-on-Slack. The
 bucket can be world-readable as far as confkoffer is concerned;
 confidentiality lives in the passphrase.
 
-The name blends **conf**iguration + **koffer** (German for *suitcase*),
-echoing the English *coffer* (strongbox). A trusted suitcase for your
+The name blends **conf**iguration + **koffer** (German for _suitcase_),
+echoing the English _coffer_ (strongbox). A trusted suitcase for your
 configs.
 
 confkoffer is project-agnostic. It does not assume Terraform, Ansible,
@@ -108,12 +108,12 @@ confkoffer unpack --at 2026-04-28T12:00:00Z
 
 ## Subcommands
 
-| Command   | Purpose |
-|-----------|---------|
-| `init`    | Write a `.confkoffer.yaml` template into CWD. `--force` overwrites. |
-| `pack`    | Walk source dir, encrypt, upload as `<name>/<ts>-<host6>-<rand4>.enc`. |
-| `unpack`  | Download a snapshot (default: newest), decrypt, extract. |
-| `list`    | Print snapshots under `<name>/`, newest first, with size + key. |
+| Command  | Purpose                                                                |
+| -------- | ---------------------------------------------------------------------- |
+| `init`   | Write a `.confkoffer.yaml` template into CWD. `--force` overwrites.    |
+| `pack`   | Walk source dir, encrypt, upload as `<name>/<ts>-<host6>-<rand4>.enc`. |
+| `unpack` | Download a snapshot (default: newest), decrypt, extract.               |
+| `list`   | Print snapshots under `<name>/`, newest first, with size + key.        |
 
 ### `unpack` selection flags
 
@@ -136,16 +136,17 @@ Lives in CWD as `.confkoffer.yaml`. Override path with `--config`. There
 is no walk-up of parent directories — discovery is CWD-only.
 
 ```yaml
-name: my-project                # required; lowercase alnum + dashes,
-                                # may use "/" for nesting (prod/aws/useast)
+name:
+  my-project # required; lowercase alnum + dashes,
+  # may use "/" for nesting (prod/aws/useast)
 
 storage:
-  bucket: confkoffer            # default if omitted: 'confkoffer'
-  endpoint: s3.amazonaws.com    # required (no safe default)
-  region: eu-central-1          # default: us-east-1
+  bucket: confkoffer # default if omitted: 'confkoffer'
+  endpoint: s3.amazonaws.com # required (no safe default)
+  region: eu-central-1 # default: us-east-1
 
-crypto:                         # optional; defaults to OWASP second-choice
-  argon2id:                     # OWASP first-choice (stronger):
+crypto: # optional; defaults to OWASP second-choice
+  argon2id: # OWASP first-choice (stronger):
     memory_kib: 47104
     time: 1
     threads: 1
@@ -154,13 +155,13 @@ patterns:
   include:
     - "**/*.tf"
     - "**/*.tfvars"
-    - "secrets/prod.env"        # literal paths also work
+    - "secrets/prod.env" # literal paths also work
   exclude:
     - "**/*.tfstate"
     - ".terraform/**"
 
-password:                       # optional; default chain: flag -> env -> prompt
-  source: pass                  # one of: prompt | env | flag | pass | command
+password: # optional; default chain: flag -> env -> prompt
+  source: pass # one of: prompt | env | flag | pass | command
   pass:
     path: backups/confkoffer/my-project
   # OR universal exec source:
@@ -192,13 +193,13 @@ For any field that can be overridden:
 
 ## Password sources
 
-| Source    | When to use | Notes |
-|-----------|-------------|-------|
-| `prompt`  | Interactive sessions | No-echo via x/term; double-confirm on `pack`. 3 attempts then exit code 2. |
-| `flag`    | Tests, one-off | `--pass <value>` — leaks via shell history. |
-| `env`     | CI with secret-managers piping in | `CONFKOFFER_PASS` — leaks via `/proc/$$/environ` if not careful. |
-| `pass`    | passwordstore.org users | `password.pass.path: backups/confkoffer/<name>` |
-| `command` | Vault, 1Password, Bitwarden, KeePassXC, anything with stdout | `password.command.argv: [...]` and optional `timeout: 10s`. |
+| Source    | When to use                                                  | Notes                                                                      |
+| --------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `prompt`  | Interactive sessions                                         | No-echo via x/term; double-confirm on `pack`. 3 attempts then exit code 2. |
+| `flag`    | Tests, one-off                                               | `--pass <value>` — leaks via shell history.                                |
+| `env`     | CI with secret-managers piping in                            | `CONFKOFFER_PASS` — leaks via `/proc/$$/environ` if not careful.           |
+| `pass`    | passwordstore.org users                                      | `password.pass.path: backups/confkoffer/<name>`                            |
+| `command` | Vault, 1Password, Bitwarden, KeePassXC, anything with stdout | `password.command.argv: [...]` and optional `timeout: 10s`.                |
 
 ### Recommendations
 
@@ -215,24 +216,24 @@ For any field that can be overridden:
 
 ## Environment variables
 
-| Variable                 | Purpose                           |
-|--------------------------|-----------------------------------|
-| `AWS_ACCESS_KEY_ID`      | S3 credentials (always env)       |
-| `AWS_SECRET_ACCESS_KEY`  | S3 credentials (always env)       |
-| `AWS_ENDPOINT`           | S3 endpoint                       |
-| `AWS_REGION`             | S3 region (overrides YAML, behind `--region`) |
-| `CONFKOFFER_NAME`        | Project name / S3 prefix          |
-| `CONFKOFFER_BUCKET`      | S3 bucket                         |
-| `CONFKOFFER_PASS`        | Passphrase (avoid for automation) |
+| Variable                | Purpose                                       |
+| ----------------------- | --------------------------------------------- |
+| `AWS_ACCESS_KEY_ID`     | S3 credentials (always env)                   |
+| `AWS_SECRET_ACCESS_KEY` | S3 credentials (always env)                   |
+| `AWS_ENDPOINT`          | S3 endpoint                                   |
+| `AWS_REGION`            | S3 region (overrides YAML, behind `--region`) |
+| `CONFKOFFER_NAME`       | Project name / S3 prefix                      |
+| `CONFKOFFER_BUCKET`     | S3 bucket                                     |
+| `CONFKOFFER_PASS`       | Passphrase (avoid for automation)             |
 
 ---
 
 ## Exit codes
 
-| Code | Meaning |
-|------|---------|
-| 0    | Success |
-| 1    | General runtime error: network, decrypt failure, no snapshots, file IO, password manager exec failure |
+| Code | Meaning                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------- |
+| 0    | Success                                                                                                 |
+| 1    | General runtime error: network, decrypt failure, no snapshots, file IO, password manager exec failure   |
 | 2    | Config error: missing required fields, malformed YAML, name validation failed, prompt retries exhausted |
 
 ---
