@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"confkoffer/internal/archive"
-	"confkoffer/internal/config"
-	"confkoffer/internal/crypto"
-	"confkoffer/internal/store"
+	"github.com/renewelches/confkoffer/internal/archive"
+	"github.com/renewelches/confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/crypto"
+	"github.com/renewelches/confkoffer/internal/store"
 )
 
 func addUnpack(root *cobra.Command) {

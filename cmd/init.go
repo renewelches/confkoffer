@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/config"
 )
 
 func addInit(root *cobra.Command) {

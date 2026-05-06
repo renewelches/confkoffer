@@ -1,4 +1,4 @@
-module confkoffer
+module github.com/renewelches/confkoffer
 
 go 1.26
 

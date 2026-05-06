@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"confkoffer/internal/config"
-	"confkoffer/internal/password"
+	"github.com/renewelches/confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/password"
 )
 
 func TestExitCodeFor(t *testing.T) {

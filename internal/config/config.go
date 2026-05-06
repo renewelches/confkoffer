@@ -17,7 +17,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"confkoffer/internal/crypto"
+	"github.com/renewelches/confkoffer/internal/crypto"
 )
 
 // DefaultBucket is used when neither YAML nor flag/env supply one.

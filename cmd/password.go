@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"confkoffer/internal/config"
-	"confkoffer/internal/password"
+	"github.com/renewelches/confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/password"
 )
 
 // buildPasswordSource translates the resolved Config into a concrete

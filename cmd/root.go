@@ -20,9 +20,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"confkoffer/internal/config"
-	"confkoffer/internal/logging"
-	"confkoffer/internal/password"
+	"github.com/renewelches/confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/logging"
+	"github.com/renewelches/confkoffer/internal/password"
 )
 
 // rootFlags is the canonical home for the global flag values; subcmds

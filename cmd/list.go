@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"confkoffer/internal/config"
-	"confkoffer/internal/store"
+	"github.com/renewelches/confkoffer/internal/config"
+	"github.com/renewelches/confkoffer/internal/store"
 )
 
 func addList(root *cobra.Command) {

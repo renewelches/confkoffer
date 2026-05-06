@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"confkoffer/internal/logging"
+	"github.com/renewelches/confkoffer/internal/logging"
 )
 
 // fakeCmd implements cmdLike with canned output/error.

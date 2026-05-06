@@ -1,6 +1,6 @@
 package main
 
-import "confkoffer/cmd"
+import "github.com/renewelches/confkoffer/cmd"
 
 func main() {
 	cmd.Execute()
