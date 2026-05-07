@@ -1,4 +1,4 @@
-// Package cmd wires the cobra command tree.
+// Package cli wires the cobra command tree.
 //
 // Exit-code mapping:
 //   - 0: success
@@ -7,7 +7,7 @@
 //     retries exhausted)
 //
 // Sub-commands return a regular error and Execute classifies it.
-package cmd
+package cli
 
 import (
 	"context"

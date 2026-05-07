@@ -1,7 +1,7 @@
 .PHONY: build test test-race test-cover run tidy clean
 
 build:
-	go build -o bin/confkoffer ./
+	go build -o bin/confkoffer ./cmd/confkoffer
 
 test:
 	go test ./...
@@ -13,7 +13,7 @@ test-cover:
 	go test -coverprofile=cover.out ./... && go tool cover -func=cover.out
 
 run:
-	go run ./ $(ARGS)
+	go run ./cmd/confkoffer $(ARGS)
 
 tidy:
 	go mod tidy

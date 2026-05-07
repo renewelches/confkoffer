@@ -66,7 +66,7 @@ confkoffer does **not** protect against:
 ## Install / build
 
 ```sh
-go install confkoffer@latest    # once published
+go install github.com/renewelches/confkoffer/cmd/confkoffer@latest
 # or build from source:
 git clone <repo> && cd confkoffer
 make build                      # produces ./bin/confkoffer
