@@ -23,6 +23,7 @@ import (
 	"github.com/renewelches/confkoffer/internal/config"
 	"github.com/renewelches/confkoffer/internal/logging"
 	"github.com/renewelches/confkoffer/internal/password"
+	"github.com/renewelches/confkoffer/internal/version"
 )
 
 // rootFlags is the canonical home for the global flag values; subcmds
@@ -48,6 +49,7 @@ keep sensitive files (provider credentials, env files, backend
 configs) safely backed up off-machine.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       version.Version,
 	}
 	c.PersistentFlags().StringVar(&rootOpts.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
 	c.PersistentFlags().StringVar(&rootOpts.Region, "region", "", "S3 region (overrides config; default us-east-1)")

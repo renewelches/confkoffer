@@ -1,7 +1,7 @@
 .PHONY: build test test-race test-cover run tidy clean
 
 build:
-	go build -o bin/confkoffer ./cmd/confkoffer
+	go build -ldflags="-X 'github.com/renewelches/confkoffer/internal/version.Version=DevBuild' -X 'github.com/renewelches/confkoffer/internal/version.CommitSHA=$(git rev-parse --short HEAD)'" -o bin/confkoffer ./cmd/confkoffer
 
 test:
 	go test ./...
