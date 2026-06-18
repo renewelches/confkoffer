@@ -1,0 +1,61 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: confkoffer
+    main: ./cmd/confkoffer
+    binary: confkoffer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    goamd64:
+      - v1 
+    ldflags:
+      - -s -w
+      - -X github.com/renewelches/confkoffer/internal/version.Version={{.Version}}
+      - -X github.com/renewelches/confkoffer/internal/version.Commit={{.Commit}}
+      - -X github.com/renewelches/confkoffer/internal/version.Date={{.Date}}
+
+archives:
+  - id: confkoffer
+    formats: [tar.gz]
+    name_template: >-
+      {{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README*
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: "Features"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: "Others"
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "Merge pull request"
+
+release:
+  github:
+    owner: renewelches
+    name: confkoffergoreleaser release --snapshot --clean
