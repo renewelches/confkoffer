@@ -74,6 +74,7 @@ func Execute() {
 	addUnpack(root)
 	addList(root)
 	addInit(root)
+	addVersion(root)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
