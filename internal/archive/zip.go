@@ -157,6 +157,13 @@ func Unpack(blob []byte, outDir string, overwrite bool) (UnpackResult, error) {
 // is malformed (absolute path, ".." segment, empty name).
 var ErrUnsafePath = errors.New("archive entry has unsafe path")
 
+// MaxEntrySize caps the decompressed size of a single archive entry.
+// Guards against zip bombs exhausting disk space.
+const MaxEntrySize = 128 << 20 // 128 MiB
+
+// ErrEntryTooLarge is returned when an entry decompresses past MaxEntrySize.
+var ErrEntryTooLarge = errors.New("archive entry exceeds size limit")
+
 func writeFile(dest string, src io.Reader, mode os.FileMode) error {
 	// Truncate-create with the target mode. We rely on parent perms +
 	// the user's umask for security on the parent directory.
@@ -164,9 +171,18 @@ func writeFile(dest string, src io.Reader, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dest, err)
 	}
-	if _, err := io.Copy(f, src); err != nil {
+	// Copy through a limiter so a zip bomb fails fast instead of
+	// filling the disk. The +1 lets us distinguish "exactly at the
+	// limit" from "exceeds it".
+	n, err := io.Copy(f, io.LimitReader(src, MaxEntrySize+1))
+	if err != nil {
 		_ = f.Close()
 		return fmt.Errorf("write %s: %w", dest, err)
+	}
+	if n > MaxEntrySize {
+		_ = f.Close()
+		_ = os.Remove(dest)
+		return fmt.Errorf("%w: %s (limit %d bytes)", ErrEntryTooLarge, dest, MaxEntrySize)
 	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", dest, err)

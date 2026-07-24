@@ -86,6 +86,7 @@ func runUnpack(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	defer wipe(plaintext)
 
 	outputDir, _ := cmd.Flags().GetString("output-dir")
 	overwrite, _ := cmd.Flags().GetBool("overwrite")

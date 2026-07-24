@@ -61,6 +61,7 @@ func runPack(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	defer wipe(plaintext)
 
 	src, err := buildPasswordSource(cfg, true /* confirm */)
 	if err != nil {

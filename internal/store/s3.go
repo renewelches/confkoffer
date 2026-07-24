@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -81,7 +82,9 @@ func New(cfg Config) (*Client, error) {
 }
 
 // normalizeEndpoint accepts "host:port", "http://host", or "https://host"
-// and returns the bare host:port plus the secure bit.
+// and returns the bare host:port plus the secure bit. Whenever the
+// result is insecure, a warning is logged — cleartext transport exposes
+// the AWS credentials in the request headers, not just the blob.
 func normalizeEndpoint(in string, forceInsecure bool) (string, bool, error) {
 	in = strings.TrimSpace(in)
 	if in == "" {
@@ -89,13 +92,42 @@ func normalizeEndpoint(in string, forceInsecure bool) (string, bool, error) {
 	}
 	secure := !forceInsecure
 
-	if strings.HasPrefix(in, "http://") {
-		return strings.TrimPrefix(in, "http://"), false, nil
+	// Scheme comparison is case-insensitive per RFC 3986 ("HTTP://" is
+	// valid), so cut by length after an EqualFold check rather than a
+	// literal prefix match.
+	if host, ok := cutSchemeFold(in, "https://"); ok {
+		return host, true, nil
 	}
-	if strings.HasPrefix(in, "https://") {
-		return strings.TrimPrefix(in, "https://"), true, nil
+	if host, ok := cutSchemeFold(in, "http://"); ok {
+		warnInsecure(host)
+		return host, false, nil
+	}
+	if !secure {
+		warnInsecure(in)
 	}
 	return in, secure, nil
+}
+
+// cutSchemeFold strips scheme from the front of in, matching
+// case-insensitively. Returns the remainder and whether it matched.
+func cutSchemeFold(in, scheme string) (string, bool) {
+	if len(in) >= len(scheme) && strings.EqualFold(in[:len(scheme)], scheme) {
+		return in[len(scheme):], true
+	}
+	return in, false
+}
+
+// warnInsecure logs the TLS-disabled warning, skipping loopback hosts
+// where cleartext is the expected local-MinIO workflow.
+func warnInsecure(host string) {
+	bare := host
+	if i := strings.LastIndex(bare, ":"); i >= 0 {
+		bare = bare[:i]
+	}
+	if bare == "localhost" || bare == "127.0.0.1" || bare == "::1" || bare == "[::1]" {
+		return
+	}
+	slog.Warn("store: TLS disabled — AWS credentials will be sent in cleartext", "endpoint", host)
 }
 
 // Put uploads body to key with content-type application/octet-stream.
@@ -111,8 +143,16 @@ func (c *Client) Put(ctx context.Context, key string, body []byte) error {
 	return withRetry(ctx, c.retry, op)
 }
 
+// MaxBlobSize caps how many bytes Get will read for a single object.
+// Guards against OOM on corrupted or adversarial oversized objects.
+const MaxBlobSize = 256 << 20 // 256 MiB
+
+// ErrTooLarge is returned by Get when the object exceeds MaxBlobSize.
+var ErrTooLarge = errors.New("object exceeds maximum blob size")
+
 // Get downloads the object at key and returns its bytes. Retries on
-// transient errors.
+// transient errors. Objects larger than MaxBlobSize are rejected with
+// ErrTooLarge.
 func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	var out []byte
 	op := func(ctx context.Context) error {
@@ -121,9 +161,12 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 			return err
 		}
 		defer obj.Close()
-		buf, err := io.ReadAll(obj)
+		buf, err := io.ReadAll(io.LimitReader(obj, MaxBlobSize+1))
 		if err != nil {
 			return err
+		}
+		if len(buf) > MaxBlobSize {
+			return fmt.Errorf("%w: %s (limit %d bytes)", ErrTooLarge, key, MaxBlobSize)
 		}
 		out = buf
 		return nil

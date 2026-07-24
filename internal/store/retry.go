@@ -45,6 +45,10 @@ func isTransient(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+	// An oversized object will not shrink on retry.
+	if errors.Is(err, ErrTooLarge) {
+		return false
+	}
 	var er minio.ErrorResponse
 	if errors.As(err, &er) {
 		if er.StatusCode >= 500 {
