@@ -98,7 +98,7 @@ confkoffer unpack --output-dir restored/
 
 # Or list snapshots and pick a specific one:
 confkoffer list
-confkoffer unpack --object-key 'my-project/2026-04-28T10-15-00Z-a3f91c-7d4e.enc'
+confkoffer unpack --object-key 'my-project/2026-04-28T10-15-00Z-7d4e.enc'
 
 # Or restore as of a point in time:
 confkoffer unpack --at 2026-04-28T12:00:00Z
@@ -111,7 +111,7 @@ confkoffer unpack --at 2026-04-28T12:00:00Z
 | Command  | Purpose                                                                |
 | -------- | ---------------------------------------------------------------------- |
 | `init`   | Write a `.confkoffer.yaml` template into CWD. `--force` overwrites.    |
-| `pack`   | Walk source dir, encrypt, upload as `<name>/<ts>-<host6>-<rand4>.enc`. |
+| `pack`   | Walk source dir, encrypt, upload as `<name>/<ts>-<rand4>.enc`.         |
 | `unpack` | Download a snapshot (default: newest), decrypt, extract.               |
 | `list`   | Print snapshots under `<name>/`, newest first, with size + key.        |
 
@@ -241,21 +241,19 @@ For any field that can be overridden:
 ## S3 object key layout
 
 ```
-<name>/<RFC3339-utc-with-:-as-->-<host6>-<rand4>.enc
+<name>/<RFC3339-utc-with-:-as-->-<rand4>.enc
 ```
 
 Example:
 
 ```
-prod/aws/useast/2026-04-28T12-34-56Z-a3f91c-7d4e.enc
+prod/aws/useast/2026-04-28T12-34-56Z-7d4e.enc
 ```
 
 - `<name>` is your project / tree path; `[a-z0-9-]+` per segment, may
   contain `/` for nesting.
-- `<host6>` is the first 6 hex chars of `sha256(hostname)` — opaque,
-  stable per machine, no hostname leak.
 - `<rand4>` is 4 random hex chars from `crypto/rand`. Eliminates
-  same-second collisions on the same host.
+  same-second collisions.
 
 **Listing semantics**: `unpack` and `list` use `LastModified` from the
 server as the authority. The timestamp in the key is a human-readable
@@ -315,6 +313,3 @@ confkoffer unpack --output-dir restored/
 - **Hashicorp Vault password source** — typed source with AppRole auth
   and lease renewal. Will be a new file in `internal/password/`; no
   interface changes required.
-- **Host-fingerprint-in-header option** — push the per-machine
-  fingerprint into the encrypted header so it isn't visible in object
-  keys, for users with zero leak tolerance.
