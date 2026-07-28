@@ -271,7 +271,7 @@ One blocker: the GCS XML API does not implement **ListObjectsV2**, which `minio-
 
 Caveat worth documenting rather than hiding: HMAC keys are long-lived static credentials, weaker than workload identity, and capped at 5 per service account.
 
-GitHub issue: #24
+**Status: not planned** — GitHub issue #24, closed unimplemented in favour of §4.3. Reaching GCS through `gocloud.dev` uses the native API with Application Default Credentials, which is better auth than interoperability HMAC keys and makes the `UseV1` workaround unnecessary. Implementing this first would mean writing the HMAC setup docs and the V1-listing gate only to delete both.
 
 ### 4.2 Azure Blob Storage — not reachable at all
 
@@ -302,6 +302,26 @@ The storage surface is small enough to make this tractable. `store.Client` expos
 
 GitHub issue: #25
 
+### 4.4 Local filesystem backend
+
+Once §4.3 lands the `Backend` interface, `gocloud.dev`'s `fileblob` driver makes a plain directory path a near-free additional destination — closer to driver registration than to new feature work:
+
+```
+confkoffer pack --endpoint file:///mnt/backups/confkoffer
+```
+
+This serves homelab, air-gapped, and evaluate-without-cloud-credentials cases. It should be scoped and documented as **"local filesystem or mounted share"**, not "NFS support" — confkoffer must not know whether a path is NFS, SMB, or sshfs, and no network-filesystem-specific code belongs in the codebase.
+
+Two design issues are genuine rather than cosmetic:
+
+**Ordering must not depend on mtime.** `PickAt` and newest-first `List` sort on `LastModified`, which is server-controlled and immutable on S3 but freely rewritten on a filesystem by `touch`, `rsync -t`, a restore, or copying the tree between hosts — silently corrupting point-in-time restore. The key format already solves this: `<name>/2026-04-28T12-34-56Z-7d4e.enc` is RFC3339 UTC with colons as dashes, which sorts **lexicographically in correct chronological order**. Sorting by key is strictly more trustworthy here, and is worth considering as the default for all backends (with `LastModified` retained for display, and a fallback for objects not produced by `KeyForName`).
+
+**Writes must be atomic.** An interrupted filesystem write leaves a truncated `.enc` that `list` reports with a plausible size and timestamp and that only fails at restore time. Write-to-temp + `rename` is the fix; whether `fileblob` already does this on `Close` must be verified against the pinned version, not assumed.
+
+**Threat model differs and the README must say so.** Confidentiality is unchanged — blobs are Argon2id + AES-256-GCM wherever they live. But S3 offers versioning, object lock, and MFA delete where a filesystem offers POSIX permissions, and NFSv3 `AUTH_SYS` effectively trusts the client-asserted uid: anyone who can mount the export can *delete* snapshots. Encryption protects confidentiality, not availability. This raises the value of `verify` (#20) considerably, since there is no object-store integrity layer underneath.
+
+GitHub issue: #26
+
 ---
 
 ## 5. Priority Recommendation
@@ -311,6 +331,6 @@ GitHub issue: #25
 | ~~Immediate~~ | ~~Fix #6 (zero plaintext), fix #7 (size caps), fix README stale host6 docs~~ — **done** (`5f493da`, `1e1d750`) |
 | ~~Immediate~~ | ~~Fix #8 (TLS warning)~~ — **done** (`5f493da`) |
 | Short-term | `verify` (#20), `prune` (#21), `rekey` (#16), storage `Backend` abstraction (#25) |
-| Medium-term | `diff` (#18), selective extract (#19), progress output (#22), ctx propagation (#12), `PasswordOverride` zeroing (#13) |
+| Medium-term | filesystem backend (#26), `diff` (#18), selective extract (#19), progress output (#22), ctx propagation (#12), `PasswordOverride` zeroing (#13) |
 | Longer-term | multi-recipient design (#17), Vault password source (#23), configurable size limits (#15), `list --verbose` (#14) |
 | Housekeeping | `bytes.NewReader` (#9), `pickKey` bounds check (#10), `slices.SortFunc` (#11) |
