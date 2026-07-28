@@ -38,7 +38,7 @@ GitHub issue: #6
 
 Recommended cap: `256 MiB` for the blob, `128 MiB` per zip entry. Make both configurable via config/env.
 
-GitHub issue: #7
+GitHub issue: #7 (caps added); #15 (make them configurable)
 
 ---
 
@@ -60,6 +60,8 @@ The README still describes the `host6` component in the S3 key format (including
 
 Also: the roadmap item "Host-fingerprint-in-header option" is now moot since the fingerprint was removed entirely.
 
+**Status: done** — fixed in `1e1d750`.
+
 ---
 
 ### 1.5 `config.Load` — unnecessary string conversion of file bytes
@@ -71,6 +73,8 @@ dec := yaml.NewDecoder(strings.NewReader(string(data)))
 ```
 
 `os.ReadFile` returns `[]byte`. Converting it to `string` to then wrap in `strings.NewReader` makes an unnecessary allocation. Use `bytes.NewReader(data)` directly.
+
+GitHub issue: #9
 
 ---
 
@@ -84,6 +88,8 @@ return objs[0].Key, nil // newest
 
 This is currently safe because `List` returns `ErrNoSnapshots` before returning an empty slice. However, if `List` semantics ever change, this will panic at runtime with no diagnostic. A bounds check with a clear error message would make the contract explicit.
 
+GitHub issue: #10
+
 ---
 
 ### 1.7 `scan.go` — insertion sort is fine for small inputs, but undocumented limit
@@ -91,6 +97,8 @@ This is currently safe because `List` returns `ErrNoSnapshots` before returning 
 **File:** `internal/scan/scan.go:158`
 
 The comment says "real input sizes are small". There is no enforcement of that assumption. A project directory with 50 000 small config fragments would complete but would be O(n²). Consider switching to `slices.SortFunc` (stdlib since Go 1.21) and removing the comment, or add a max-files guard with a clear error.
+
+GitHub issue: #11
 
 ---
 
@@ -100,6 +108,8 @@ The comment says "real input sizes are small". There is no enforcement of that a
 
 `buildArchive` opens and reads files synchronously with no context. A `pack` on a large tree can't be cancelled via Ctrl-C between file reads. Passing `ctx` through and checking `ctx.Err()` in the loop would fix this.
 
+GitHub issue: #12
+
 ---
 
 ### 1.9 `PasswordOverride` in `Config` struct is never zeroed
@@ -107,6 +117,8 @@ The comment says "real input sizes are small". There is no enforcement of that a
 **File:** `internal/config/config.go`, `internal/cli/root.go`
 
 `cfg.PasswordOverride` is populated from the `--pass` CLI flag (a Go string — immutable, can't be zeroed at the source) and stored as `[]byte` in the Config struct. The struct is passed through `loadAndResolveConfig` and into the CLI handlers, where the byte slice is used to construct a `FlagSource`. After the source is built, `cfg.PasswordOverride` is never explicitly zeroed. It's a `[]byte` so `crypto.Zero(cfg.PasswordOverride)` could be deferred in `runPack` / `runUnpack` after `buildPasswordSource` returns.
+
+GitHub issue: #13
 
 ---
 
@@ -132,6 +144,8 @@ _ = f.Close()
 
 The `list` command shows `LAST_MODIFIED`, `SIZE`, and `KEY`. Comparable tools (SOPS, Vault) show richer metadata per snapshot. Consider adding a `--verbose` flag that downloads and decodes only the blob header (35 bytes via a range-GET) to display KDF parameters and file count without a full decrypt.
 
+GitHub issue: #14
+
 ---
 
 ## 2. Security Analysis Summary
@@ -139,9 +153,10 @@ The `list` command shows `LAST_MODIFIED`, `SIZE`, and `KEY`. Comparable tools (S
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
 | GH #5 | `host6` in S3 key leaks hostname fingerprints | Medium | **Closed/Fixed** |
-| GH #6 | Plaintext buffer not zeroed after pack/unpack | Medium | Open |
-| GH #7 | Unbounded `io.ReadAll` in `Get` + zip bomb via `io.Copy` | Medium | Open |
-| GH #8 | `http://` endpoint silently disables TLS, credentials in cleartext | Medium | Open |
+| GH #6 | Plaintext buffer not zeroed after pack/unpack | Medium | **Closed/Fixed** |
+| GH #7 | Unbounded `io.ReadAll` in `Get` + zip bomb via `io.Copy` | Medium | **Closed/Fixed** |
+| GH #8 | `http://` endpoint silently disables TLS, credentials in cleartext | Medium | **Closed/Fixed** |
+| GH #13 | `cfg.PasswordOverride` never zeroed | Low | Open |
 
 ### Crypto assessment
 
@@ -176,11 +191,15 @@ confkoffer has no `rekey` command. Once a blob is uploaded with a passphrase, th
 
 **Recommendation**: `confkoffer rekey --old-pass … --new-pass …` that downloads, decrypts, re-encrypts, uploads under the same key name.
 
+GitHub issue: #16
+
 #### 3.2.2 Multi-recipient / team key sharing
 **SOPS** supports encrypting to multiple KMS keys or GPG recipients. **BlackBox** is built on GPG team keyrings.
 confkoffer is symmetric-only. Sharing a passphrase by side-channel is exactly what the README describes as a solved problem, but rotating one person's access out requires changing the shared passphrase and notifying everyone.
 
 **Recommendation**: An optional `age`-recipient layer on top of the current symmetric core, or a `pass` team path convention. This is a larger design decision but is the most-requested feature class in this tool category.
+
+GitHub issue: #17
 
 #### 3.2.3 Diff / audit between snapshots
 **Vault** has audit logging. **git-crypt** inherits git's history. **SOPS** files can be diffed with `sops --decrypt`.
@@ -188,11 +207,15 @@ confkoffer has no way to see what changed between two snapshots. You can only un
 
 **Recommendation**: `confkoffer diff <key1> <key2>` that downloads, decrypts both, and streams a unified diff without writing to disk.
 
+GitHub issue: #18
+
 #### 3.2.4 Selective extract (single-file unpack)
 **SOPS** operates on individual files. **Vault** returns individual secrets.
 confkoffer unpacks the entire snapshot or nothing. There is no way to extract just `secrets/prod.env` from a large bundle without writing the rest.
 
 **Recommendation**: `confkoffer unpack --only secrets/prod.env` using the zip central directory to seek directly to the matching entry.
+
+GitHub issue: #19
 
 #### 3.2.5 Verify / integrity check without full unpack
 **age**, **SOPS** — decryption itself is the verify step. **Vault** has explicit seal/unseal health.
@@ -200,17 +223,23 @@ confkoffer has no way to verify a snapshot's integrity without fully downloading
 
 **Recommendation**: `confkoffer verify [--object-key KEY]` — download, check the 35-byte header, attempt `gcm.Open` against the tag, report pass/fail. No disk writes.
 
+GitHub issue: #20
+
 #### 3.2.6 Prune / delete old snapshots
 **All comparable tools** leave cleanup to the user, but many provide a helper command.
 confkoffer's README correctly says to use S3 lifecycle rules, but there is no `confkoffer prune --keep-last N` command. This is especially needed for high-frequency CI pack runs that would otherwise accumulate thousands of objects.
 
 **Recommendation**: `confkoffer prune --keep-last N` (dry-run by default) that lists objects, keeps the N newest, and calls `s3:DeleteObject` on the rest.
 
+GitHub issue: #21
+
 #### 3.2.7 Progress output for large packs
 **rclone**, **restic**, **Vault** all display progress bars or transfer stats.
 confkoffer prints nothing during the upload/download. For large archives over slow connections, the tool appears to hang.
 
 **Recommendation**: Use a progress writer wrapping the upload/download byte stream (e.g. with `github.com/vbauerster/mpb` or a simple bytes-transferred counter to stderr).
+
+GitHub issue: #22
 
 #### 3.2.8 `--dry-run` flag
 Already tracked as issue #2. Mentioned here for completeness.
@@ -221,13 +250,67 @@ Already tracked as issue #3. Mentioned here for completeness.
 #### 3.2.10 HashiCorp Vault password source
 Already noted in the README roadmap. Would complete the automation story for Vault-native infra teams.
 
+GitHub issue: #23
+
 ---
 
-## 4. Priority Recommendation
+## 4. Multi-Cloud Storage Backends
+
+_Added: 2026-07-28_
+
+confkoffer is currently S3-only, talking to `minio-go` directly. The question of whether that SDK also covers GCP and Azure has two very different answers.
+
+### 4.1 Google Cloud Storage — reachable today
+
+GCS exposes an S3-compatible **XML API** ("interoperability mode"), and `minio-go` works against it:
+
+- Endpoint `storage.googleapis.com`, SigV4 signing — supported.
+- Auth uses **HMAC keys** generated per service account, which live in `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — exactly what `credentials.NewEnvAWS()` already reads. No code change for auth.
+
+One blocker: the GCS XML API does not implement **ListObjectsV2**, which `minio-go` sends by default, so `Client.List` (`internal/store/s3.go:191`) fails. `minio.ListObjectsOptions` carries a `UseV1 bool` escape hatch (verified present in the pinned `minio-go v7.1.0`) — it should be gated on a config field rather than applied unconditionally, since V1 listing is deprecated on every other backend.
+
+Caveat worth documenting rather than hiding: HMAC keys are long-lived static credentials, weaker than workload identity, and capped at 5 per service account.
+
+GitHub issue: #24
+
+### 4.2 Azure Blob Storage — not reachable at all
+
+Azure Blob Storage has **no S3-compatible API**. There is nothing for `minio-go` to connect to. MinIO's `minio gateway azure` was removed from the product in 2022, so that escape route no longer exists either.
+
+Options considered:
+
+| Option | Assessment |
+|--------|------------|
+| `gocloud.dev/blob` (Go CDK) | One interface over `s3blob` / `gcsblob` / `azureblob`. **Chosen.** |
+| Azure SDK behind a hand-rolled `Backend` interface | More code, but no third-party abstraction in the design. |
+| `s3proxy` in front of Azure | No Go changes, but adds a server to operate — not worth it for a CLI. |
+
+### 4.3 Chosen direction — `gocloud.dev/blob`
+
+The storage surface is small enough to make this tractable. `store.Client` exposes exactly three methods that touch the network — `Put`, `Get`, `List` — while `PickAt`, `sortByLastModifiedDesc`, and `KeyForName` are already backend-agnostic. The interface to extract is those three methods.
+
+**This supersedes §4.1.** Going through `gocloud.dev` reaches GCS via the *native* API with Application Default Credentials — strictly better auth than interoperability HMAC keys — and makes the `UseV1` workaround unnecessary. #24 is the cheap tactical fix available today; if #25 is scheduled, #24 should be closed as obsolete rather than implemented.
+
+**Migration risks (ranked by likelihood of biting):**
+
+1. **Retry classification breaks.** `isTransient` (`internal/store/retry.go:52`) type-asserts `minio.ErrorResponse` to read `StatusCode >= 500`. That type disappears under the abstraction; the logic must be rewritten against `gcerrors.Code`, preserving the existing `context.Canceled` / `context.DeadlineExceeded` / `ErrTooLarge` non-transient cases. This has test coverage today.
+2. **Local MinIO is the highest-risk path**, not the cloud ones — it is reached through `s3blob` with a custom endpoint and path-style addressing, and it is the primary documented developer workflow in the README. The exact URL parameters must be verified against the pinned `gocloud.dev` version, not assumed.
+3. **Dependency and binary weight.** All three drivers pull in AWS SDK v2, the Google Cloud SDK, and the Azure SDK — a large increase over `minio-go` alone for a single-binary CLI. Build tags or selective driver imports are worth considering; the size delta should be measured.
+4. **`normalizeEndpoint` becomes backend-specific.** The scheme handling and cleartext-transport warning added in `5f493da` (#8) are S3/MinIO concepts and must not be silently lost.
+
+**Bonus:** `memblob` / `fileblob` can replace hand-rolled test fakes, making the store package testable without a live MinIO.
+
+GitHub issue: #25
+
+---
+
+## 5. Priority Recommendation
 
 | Priority | Item |
 |----------|------|
-| Immediate | Fix #6 (zero plaintext), fix #7 (size caps), fix README stale host6 docs |
-| Short-term | Fix #8 (TLS warning), add `verify` command, add `prune` command |
-| Medium-term | `diff` command, selective extract (`--only`), progress output |
-| Longer-term | `rekey` command, multi-recipient design |
+| ~~Immediate~~ | ~~Fix #6 (zero plaintext), fix #7 (size caps), fix README stale host6 docs~~ — **done** (`5f493da`, `1e1d750`) |
+| ~~Immediate~~ | ~~Fix #8 (TLS warning)~~ — **done** (`5f493da`) |
+| Short-term | `verify` (#20), `prune` (#21), `rekey` (#16), storage `Backend` abstraction (#25) |
+| Medium-term | `diff` (#18), selective extract (#19), progress output (#22), ctx propagation (#12), `PasswordOverride` zeroing (#13) |
+| Longer-term | multi-recipient design (#17), Vault password source (#23), configurable size limits (#15), `list --verbose` (#14) |
+| Housekeeping | `bytes.NewReader` (#9), `pickKey` bounds check (#10), `slices.SortFunc` (#11) |
