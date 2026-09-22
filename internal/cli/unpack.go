@@ -18,19 +18,31 @@ import (
 
 func addUnpack(root *cobra.Command) {
 	c := &cobra.Command{
-		Use:          "unpack",
-		Short:        "Download, decrypt, and extract the latest (or selected) snapshot.",
+		Use:   "unpack",
+		Short: "Download, decrypt, and extract the latest (or selected) snapshot.",
+		Long: `Download a snapshot, decrypt it, and extract it into --output-dir.
+
+Selection is exactly one of: the newest snapshot under <name>/ (the
+default), --object-key for an exact key, or --at for the newest snapshot
+at-or-before a timestamp.
+
+"Newest" and --at are both judged by the store's LastModified, not by
+the timestamp in the key. The key records when a snapshot was packed and
+travels with the bytes; LastModified records when this store last wrote
+it. They normally agree, and diverge if objects are copied, synced, or
+restored from a lifecycle tier — in which case the store's own view
+wins.`,
 		SilenceUsage: true,
 		RunE:         runUnpack,
 	}
-	c.Flags().String("name", "", "project name / S3 prefix (env CONFKOFFER_NAME)")
-	c.Flags().String("bucket", "", "S3 bucket (env CONFKOFFER_BUCKET, default 'confkoffer')")
-	c.Flags().String("endpoint", "", "S3 endpoint (env AWS_ENDPOINT)")
+	c.Flags().String("name", "", "project name; also the key prefix within the store (env CONFKOFFER_NAME)")
+	c.Flags().String("bucket", "", "S3 bucket, for the aws/s3/minio providers (env CONFKOFFER_BUCKET, default 'confkoffer')")
+	c.Flags().String("endpoint", "", "S3 endpoint, for the aws/s3/minio providers (env AWS_ENDPOINT)")
 	c.Flags().String("pass", "", "passphrase value (env CONFKOFFER_PASS)")
 	c.Flags().String("output-dir", ".", "directory to extract into")
 	c.Flags().Bool("overwrite", false, "overwrite existing files in output-dir")
-	c.Flags().String("object-key", "", "exact S3 object key to fetch (skips list)")
-	c.Flags().String("at", "", "fetch the newest snapshot at-or-before this RFC3339 timestamp")
+	c.Flags().String("object-key", "", "exact object key to fetch (skips list)")
+	c.Flags().String("at", "", "fetch the newest snapshot at-or-before this RFC3339 timestamp (compared against the store's LastModified, not the key)")
 	root.AddCommand(c)
 }
 
@@ -53,13 +65,13 @@ func runUnpack(cmd *cobra.Command, _ []string) error {
 		return configError{errors.New("--object-key and --at are mutually exclusive")}
 	}
 
-	cli, err := store.New(store.Config{
-		Bucket:   cfg.Storage.Bucket,
-		Endpoint: cfg.Storage.Endpoint,
-		Region:   cfg.Storage.Region,
-	})
+	// store.New runs the provider's shape validation (endpoint scheme,
+	// absolute dirpath, container name), so its failures are config
+	// errors and must land on exit code 2 alongside the missing-field
+	// checks in Resolve — not on 1, which means a runtime failure.
+	cli, err := store.New(cfg.Storage.BlobConfig)
 	if err != nil {
-		return err
+		return configError{err}
 	}
 
 	key, err := pickKey(ctx, cli, cfg.Name, objectKey, atStr)
@@ -103,7 +115,10 @@ func runUnpack(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func pickKey(ctx context.Context, cli *store.Client, name, objectKey, atStr string) (string, error) {
+// pickKey takes store.Storage rather than *store.BlobClient so the
+// selection logic can be exercised against a fake, and so the interface
+// has at least one consumer keeping it honest.
+func pickKey(ctx context.Context, cli store.Storage, name, objectKey, atStr string) (string, error) {
 	if objectKey != "" {
 		return objectKey, nil
 	}

@@ -16,14 +16,17 @@ import (
 
 func addPack(root *cobra.Command) {
 	c := &cobra.Command{
-		Use:          "pack",
-		Short:        "Bundle, encrypt, and upload the matched files.",
+		Use:   "pack",
+		Short: "Bundle, encrypt, and upload the matched files.",
+		Long: `Bundle every file matching patterns.include, encrypt the bundle with
+a passphrase-derived key, and upload it as a single object under
+<name>/ in the configured store.`,
 		SilenceUsage: true,
 		RunE:         runPack,
 	}
-	c.Flags().String("name", "", "project name / S3 prefix (env CONFKOFFER_NAME)")
-	c.Flags().String("bucket", "", "S3 bucket (env CONFKOFFER_BUCKET, default 'confkoffer')")
-	c.Flags().String("endpoint", "", "S3 endpoint (env AWS_ENDPOINT)")
+	c.Flags().String("name", "", "project name; also the key prefix within the store (env CONFKOFFER_NAME)")
+	c.Flags().String("bucket", "", "S3 bucket, for the aws/s3/minio providers (env CONFKOFFER_BUCKET, default 'confkoffer')")
+	c.Flags().String("endpoint", "", "S3 endpoint, for the aws/s3/minio providers (env AWS_ENDPOINT)")
 	c.Flags().String("pass", "", "passphrase value (env CONFKOFFER_PASS) — avoid for automation; use pass/command source")
 	c.Flags().String("source-dir", ".", "directory to scan for files to pack")
 	root.AddCommand(c)
@@ -63,6 +66,18 @@ func runPack(cmd *cobra.Command, _ []string) error {
 	}
 	defer wipe(plaintext)
 
+	// Build the storage client before prompting. store.New runs the
+	// provider's shape validation (endpoint scheme, absolute dirpath,
+	// container name), and a malformed endpoint should surface now, not
+	// after the user has typed a passphrase twice and waited for
+	// Argon2id. Those failures are config errors, so they land on exit
+	// code 2 alongside Resolve's missing-field checks rather than on 1,
+	// which means a runtime failure.
+	cli, err := store.New(cfg.Storage.BlobConfig)
+	if err != nil {
+		return configError{err}
+	}
+
 	src, err := buildPasswordSource(cfg, true /* confirm */)
 	if err != nil {
 		return configError{err}
@@ -78,15 +93,6 @@ func runPack(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	cli, err := store.New(store.Config{
-		Bucket:   cfg.Storage.Bucket,
-		Endpoint: cfg.Storage.Endpoint,
-		Region:   cfg.Storage.Region,
-	})
-	if err != nil {
-		return err
-	}
-
 	key, err := store.KeyForName(cfg.Name)
 	if err != nil {
 		return err
@@ -98,9 +104,9 @@ func runPack(cmd *cobra.Command, _ []string) error {
 		"key", key,
 		"bytes", len(blob),
 		"files", len(matches),
-		"bucket", cfg.Storage.Bucket,
+		"provider", cfg.Storage.GetProvider(),
 	)
-	fmt.Fprintf(os.Stdout, "uploaded %s/%s (%d bytes, %d files)\n", cfg.Storage.Bucket, key, len(blob), len(matches))
+	fmt.Fprintf(os.Stdout, "uploaded %s (%d bytes, %d files)\n", key, len(blob), len(matches))
 	return nil
 }
 

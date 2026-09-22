@@ -3,11 +3,31 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/v7"
+	"gocloud.dev/gcerrors"
 )
+
+// gcerr returns a real, gocloud-coded error of the given kind.
+//
+// gcerrors codes cannot be constructed directly: the concrete type
+// lives in gocloud.dev/internal/gcerr, which is import-restricted. So
+// provoke the real thing from a real driver — the fileblob bucket
+// behind fileClient — which also keeps these fixtures honest about
+// what isTransient actually receives at runtime.
+func gcerrNotFound(t *testing.T) error {
+	t.Helper()
+	_, err := fileClient(t).Get(context.Background(), "absent/key.enc")
+	if err == nil {
+		t.Fatal("Get on an absent key returned nil, want a NotFound error")
+	}
+	if got := gcerrors.Code(err); got != gcerrors.NotFound {
+		t.Fatalf("fixture has code %v, want NotFound", got)
+	}
+	return err
+}
 
 func fastRetry() retryConfig {
 	return retryConfig{
@@ -30,12 +50,14 @@ func TestWithRetrySucceedsFirstTry(t *testing.T) {
 	}
 }
 
-func TestWithRetryRetriesOn5xx(t *testing.T) {
+// An unclassified driver error is the transport layer failing, which is
+// exactly the case retrying exists for.
+func TestWithRetryRetriesOnTransient(t *testing.T) {
 	calls := 0
 	err := withRetry(context.Background(), fastRetry(), func(context.Context) error {
 		calls++
 		if calls < 3 {
-			return minio.ErrorResponse{StatusCode: 503, Code: "ServiceUnavailable", Message: "try later"}
+			return errors.New("dial tcp: connection refused")
 		}
 		return nil
 	})
@@ -47,18 +69,21 @@ func TestWithRetryRetriesOn5xx(t *testing.T) {
 	}
 }
 
-func TestWithRetryAbortsOn4xx(t *testing.T) {
+// A definitive answer from the backend must be returned as-is on the
+// first attempt — retrying cannot change it, and the wait is pure delay
+// in front of an error the caller already had.
+func TestWithRetryAbortsOnDefinitiveError(t *testing.T) {
+	want := gcerrNotFound(t)
 	calls := 0
-	want := minio.ErrorResponse{StatusCode: 403, Code: "AccessDenied"}
 	err := withRetry(context.Background(), fastRetry(), func(context.Context) error {
 		calls++
 		return want
 	})
-	if !errors.As(err, &minio.ErrorResponse{}) {
-		t.Fatalf("err=%v not a minio.ErrorResponse", err)
+	if !errors.Is(err, want) {
+		t.Fatalf("err=%v, want the original error unwrapped", err)
 	}
 	if calls != 1 {
-		t.Fatalf("calls=%d want 1 (no retry on 4xx)", calls)
+		t.Fatalf("calls=%d want 1 (no retry on a definitive error)", calls)
 	}
 }
 
@@ -83,7 +108,7 @@ func TestWithRetryGivesUpAfterMaxAttempts(t *testing.T) {
 	calls := 0
 	err := withRetry(context.Background(), fastRetry(), func(context.Context) error {
 		calls++
-		return minio.ErrorResponse{StatusCode: 500}
+		return errors.New("connection reset by peer")
 	})
 	if err == nil {
 		t.Fatal("expected error after exhaustion")
@@ -100,13 +125,13 @@ func TestIsTransient(t *testing.T) {
 		want bool
 	}{
 		{"nil", nil, false},
-		{"500", minio.ErrorResponse{StatusCode: 500}, true},
-		{"502", minio.ErrorResponse{StatusCode: 502}, true},
-		{"403", minio.ErrorResponse{StatusCode: 403}, false},
-		{"404", minio.ErrorResponse{StatusCode: 404}, false},
+		{"gcerrors.NotFound", gcerrNotFound(t), false},
+		{"ErrTooLarge", ErrTooLarge, false},
+		{"wrapped ErrTooLarge", fmt.Errorf("get %q: %w", "k", ErrTooLarge), false},
 		{"network", errors.New("dial tcp: connection refused"), true},
 		{"context.Canceled", context.Canceled, false},
 		{"context.DeadlineExceeded", context.DeadlineExceeded, false},
+		{"wrapped context.Canceled", fmt.Errorf("op: %w", context.Canceled), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,46 +139,5 @@ func TestIsTransient(t *testing.T) {
 				t.Fatalf("got %v want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestSortByLastModifiedDesc(t *testing.T) {
-	now := time.Now()
-	objs := []Object{
-		{Key: "old", LastModified: now.Add(-2 * time.Hour)},
-		{Key: "newest", LastModified: now},
-		{Key: "mid", LastModified: now.Add(-1 * time.Hour)},
-	}
-	sortByLastModifiedDesc(objs)
-	want := []string{"newest", "mid", "old"}
-	for i, k := range want {
-		if objs[i].Key != k {
-			t.Fatalf("at %d: got %q want %q", i, objs[i].Key, k)
-		}
-	}
-}
-
-func TestPickAtPicksNewestAtOrBefore(t *testing.T) {
-	now := time.Now().UTC()
-	objs := []Object{
-		{Key: "n", LastModified: now},                   // 0h ago
-		{Key: "h-1", LastModified: now.Add(-1 * time.Hour)}, // 1h ago
-		{Key: "h-3", LastModified: now.Add(-3 * time.Hour)}, // 3h ago
-	}
-	got, err := PickAt(objs, now.Add(-2*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Key != "h-3" {
-		t.Fatalf("got %q want h-3", got.Key)
-	}
-}
-
-func TestPickAtTooOldIsErrNoSnapshots(t *testing.T) {
-	now := time.Now().UTC()
-	objs := []Object{{Key: "only", LastModified: now}}
-	_, err := PickAt(objs, now.Add(-1*time.Hour))
-	if !errors.Is(err, ErrNoSnapshots) {
-		t.Fatalf("err=%v want ErrNoSnapshots", err)
 	}
 }

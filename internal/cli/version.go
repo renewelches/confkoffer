@@ -10,8 +10,8 @@ import (
 
 func addVersion(root *cobra.Command) {
 	c := &cobra.Command{
-		Use:          "version",
-		Short:        "Print the confkoffer version, commit, and build date.",
+		Use:   "version",
+		Short: "Print the confkoffer version, commit, and build date.",
 		Long: `Print the confkoffer version, commit, and build date.
 
 Useful for confirming which release a binary was built from, especially

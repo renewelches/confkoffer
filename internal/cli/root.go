@@ -42,17 +42,26 @@ var (
 func newRoot() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "confkoffer",
-		Short: "Pack, encrypt, and ship configuration files to an S3-compatible bucket.",
+		Short: "Pack, encrypt, and ship configuration files to an object store.",
 		Long: `confkoffer bundles, encrypts, and uploads project configuration to an
-S3-compatible bucket — and reverses the flow on retrieval. Use it to
-keep sensitive files (provider credentials, env files, backend
-configs) safely backed up off-machine.`,
+object store — and reverses the flow on retrieval. Use it to keep
+sensitive files (provider credentials, env files, backend configs)
+safely backed up off-machine.
+
+Storage backends are selected by the "provider" key in .confkoffer.yaml:
+
+  aws | s3 | minio   any S3-compatible store   (bucket, endpoint, region)
+  azure              Azure Blob Storage        (containerid)
+  gcp                Google Cloud Storage      (bucket)
+  file               a directory or mount      (dirpath)
+
+Credentials are always read from the environment, never from flags.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
 	c.PersistentFlags().StringVar(&rootOpts.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
-	c.PersistentFlags().StringVar(&rootOpts.Region, "region", "", "S3 region (overrides config; default us-east-1)")
+	c.PersistentFlags().StringVar(&rootOpts.Region, "region", "", "S3 region, for the aws/s3/minio providers (overrides config; default us-east-1)")
 	c.PersistentFlags().StringVar(&rootOpts.Config, "config", config.DefaultConfigPath, "path to .confkoffer.yaml (CWD-only by default)")
 
 	c.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
@@ -132,9 +141,8 @@ func loadAndResolveConfig(cmd *cobra.Command, ov config.Overrides) (*config.Conf
 	}
 	slog.Debug("config resolved",
 		"name", cfg.Name,
-		"bucket", cfg.Storage.Bucket,
-		"endpoint", cfg.Storage.Endpoint,
-		"region", cfg.Storage.Region,
+		"provider", cfg.Storage.GetProvider(),
+		"source", cfg.SourcePath,
 	)
 	return cfg, nil
 }

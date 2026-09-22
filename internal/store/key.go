@@ -23,7 +23,7 @@ var randomFn = func(b []byte) error {
 }
 
 // KeyForName builds the S3 object key for a new snapshot under name.
-// Format: <name>/<RFC3339-utc-with-colons-as-dashes>-<host6>-<rand4>.enc
+// Format: <name>/<RFC3339-utc-with-colons-as-dashes>-<rand4>.enc
 //
 // Example: prod/aws/useast/2026-04-28T12-34-56Z-7d4e.enc
 func KeyForName(name string) (string, error) {

@@ -6,8 +6,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"github.com/renewelches/confkoffer/internal/config"
 )
 
 func addInit(root *cobra.Command) {
@@ -23,10 +21,9 @@ func addInit(root *cobra.Command) {
 
 func runInit(cmd *cobra.Command, _ []string) error {
 	force, _ := cmd.Flags().GetBool("force")
-	path := config.DefaultConfigPath
-	if rootOpts.Config != "" {
-		path = rootOpts.Config
-	}
+	// --config carries config.DefaultConfigPath as its flag default, so
+	// this is never empty and needs no fallback of its own.
+	path := rootOpts.Config
 
 	if _, err := os.Stat(path); err == nil {
 		if !force {
@@ -40,22 +37,39 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stdout, "wrote %s\n\nNext steps:\n", path)
-	fmt.Fprintln(os.Stdout, "  1. Edit the file: set 'name' and review patterns/include/exclude.")
+	fmt.Fprintln(os.Stdout, "  1. Edit the file: set 'name', pick a storage provider, review patterns.")
 	fmt.Fprintln(os.Stdout, "  2. Export S3 creds: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT.")
 	fmt.Fprintln(os.Stdout, "  3. Run: confkoffer pack")
 	return nil
 }
 
 const template = `# .confkoffer.yaml — committed to your project root.
-# Required: name, storage.endpoint. Other fields are optional.
+# Required: name, storage.provider (+ that provider's own keys).
 
 name: my-project                # alphanumeric + dashes; "/" allowed for nesting
                                 # e.g. prod/aws/useast or marketing/mailchimp/prod
 
 storage:
+  provider: aws                 # aws | s3 | minio | azure | gcp | file
   bucket: confkoffer            # S3 bucket name (default if omitted: 'confkoffer')
-  endpoint: s3.amazonaws.com    # set to MinIO's endpoint for local testing
   # region: eu-central-1        # default: us-east-1
+  # endpoint: ...               # optional for aws (FIPS/dualstack/VPC override)
+
+# Any other S3-compatible store — MinIO, Ceph, StackIT, Wasabi, R2,
+# Spaces. Identical to "aws" except the endpoint is required, so a typo
+# cannot silently send your snapshots to AWS instead:
+#
+# storage:
+#   provider: s3                # "minio" is an accepted alias
+#   bucket: confkoffer
+#   endpoint: localhost:9000
+#   # insecure: true            # http:// instead of https:// — local MinIO only
+#
+# A plain directory — local disk or any mounted share:
+#
+# storage:
+#   provider: file
+#   dirpath: /mnt/backups/confkoffer
 
 # crypto:                       # uncomment to override Argon2id defaults
 #   argon2id:                   # OWASP first-choice (stronger):
