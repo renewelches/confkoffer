@@ -164,31 +164,72 @@ const MaxEntrySize = 128 << 20 // 128 MiB
 // ErrEntryTooLarge is returned when an entry decompresses past MaxEntrySize.
 var ErrEntryTooLarge = errors.New("archive entry exceeds size limit")
 
+// writeFile writes src to dest with the given mode, atomically: the
+// content lands in a temporary file beside dest and is renamed into
+// place only once it is complete and correct.
+//
+// Writing straight to dest would be wrong in two ways, and both are
+// reachable without an attacker — a full disk, a quota, an NFS blip, or
+// a snapshot whose zip CRC does not check out:
+//
+//   - A failure mid-copy leaves a corrupt file at dest. Because
+//     archive/zip verifies the CRC at EOF, the bytes are already on
+//     disk by the time the error surfaces, so the leftover is
+//     full-length rather than short — it looks entirely healthy. These
+//     are .env files and tfvars; something reads them next.
+//
+//   - O_TRUNC destroys the existing file before the replacement is
+//     written, so a mid-copy failure under --overwrite loses the
+//     original too. Deleting the partial cannot bring it back; only
+//     never truncating in the first place can.
+//
+// Rename is atomic within a filesystem, and the temp file is created in
+// dest's own directory to guarantee that. A hard kill can strand a
+// .confkoffer-tmp-* file there, which is the accepted cost of the
+// pattern: a stray temp file is inert, a corrupt config file is not.
 func writeFile(dest string, src io.Reader, mode os.FileMode) error {
-	// Truncate-create with the target mode. We rely on parent perms +
-	// the user's umask for security on the parent directory.
-	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".confkoffer-tmp-*")
 	if err != nil {
-		return fmt.Errorf("open %s: %w", dest, err)
+		return fmt.Errorf("create temp file for %s: %w", dest, err)
 	}
+	// Cleared on success, once the file has been renamed to dest and is
+	// no longer ours to delete. Until then every return path unwinds
+	// through here, so no error branch can leak the temp file.
+	tmpName := tmp.Name()
+	defer func() {
+		if tmpName != "" {
+			_ = tmp.Close()
+			_ = os.Remove(tmpName)
+		}
+	}()
+
 	// Copy through a limiter so a zip bomb fails fast instead of
 	// filling the disk. The +1 lets us distinguish "exactly at the
 	// limit" from "exceeds it".
-	n, err := io.Copy(f, io.LimitReader(src, MaxEntrySize+1))
+	n, err := io.Copy(tmp, io.LimitReader(src, MaxEntrySize+1))
 	if err != nil {
-		_ = f.Close()
 		return fmt.Errorf("write %s: %w", dest, err)
 	}
 	if n > MaxEntrySize {
-		_ = f.Close()
-		_ = os.Remove(dest)
 		return fmt.Errorf("%w: %s (limit %d bytes)", ErrEntryTooLarge, dest, MaxEntrySize)
 	}
-	if err := f.Close(); err != nil {
+
+	// fchmod the temp file rather than chmod dest afterwards: umask does
+	// not apply, so the mode is exact, and the file is never visible at
+	// dest with anything but its final permissions.
+	if err := tmp.Chmod(mode); err != nil {
+		return fmt.Errorf("chmod %s: %w", dest, err)
+	}
+	// Close before renaming so a deferred write error (NFS, ENOSPC) is
+	// reported here, while the temp file is still the thing being
+	// discarded.
+	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", dest, err)
 	}
-	// Re-apply mode in case umask trimmed it. Best-effort.
-	_ = os.Chmod(dest, mode)
+	if err := os.Rename(tmpName, dest); err != nil {
+		return fmt.Errorf("rename into %s: %w", dest, err)
+	}
+	tmpName = ""
 	return nil
 }
 
