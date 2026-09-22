@@ -4,5 +4,15 @@ coverage.html
 *.test
 *.out
 .DS_Store
+
+# Editor state
+.vscode/
+.idea/
+
+# Scratch copies kept while refactoring — never commit a stale duplicate
+# of a file that handles passphrases or storage credentials.
+*.old
+*.orig
+*.bak
 # Added by goreleaser init:
 dist/
