@@ -1,6 +1,6 @@
 module github.com/renewelches/confkoffer
 
-go 1.26
+go 1.27
 
 require (
 	github.com/gobwas/glob v0.2.3
