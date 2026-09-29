@@ -1,5 +1,9 @@
 name: Release
 
+# A tag push publishes a signed release. A manual run is a dry run: it
+# builds and signs a snapshot, uploads it as a workflow artifact, and
+# publishes nothing. GoReleaser only releases a commit that a tag points
+# at, so a manual run from a branch could never publish anyway.
 on:
   workflow_dispatch:
   push:
@@ -12,9 +16,11 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: write # create the GitHub release
+      id-token: write # keyless cosign signing and provenance
+      attestations: write # store the build provenance attestation
+    env:
+      IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -22,6 +28,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify tag is on main
+        if: env.IS_RELEASE == 'true'
         run: |
           git fetch origin main
           git merge-base --is-ancestor ${{ github.sha }} origin/main || \
@@ -33,13 +40,29 @@ jobs:
           go-version-file: go.mod
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@v4.1.2 # no floating v4 tag exists
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: ${{ env.IS_RELEASE == 'true' && 'release --clean' || 'release --snapshot --clean' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest build provenance
+        if: env.IS_RELEASE == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ./dist/checksums.txt
+
+      - name: Upload dry-run output
+        if: env.IS_RELEASE != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt*
+          retention-days: 7
