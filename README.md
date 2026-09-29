@@ -513,6 +513,157 @@ flags; `password.*` is structural rather than per-invocation; and
 
 ---
 
+## Example configs
+
+Four complete configs, one per cloud provider, for the kind of repository
+confkoffer is built for: Terraform and Ansible code in git, with the files
+that hold secrets gitignored. The patterns select exactly those files. Each
+example also fetches the passphrase from the secret store that fits its
+provider, so nobody has to type it into `pack` or `unpack`.
+
+### Self-hosted MinIO (`s3`)
+
+A homelab that deploys several services, each with its own TLS certificate,
+and keeps Terraform state in a remote backend.
+
+```yaml
+name: homelab/lxc-services
+
+storage:
+  provider: s3
+  bucket: confkoffer
+  endpoint: https://minio.homelab.example:9000
+  region: us-east-1 # MinIO's default; must match the server's region if it sets one
+
+patterns:
+  include:
+    - "**/backend.tf" # remote-state config
+    - "**/*.tfvars"
+    - "ansible/inventory/**/inventory.ini"
+    - "ansible/inventory/**/ansible.cfg"
+    - "ansible/files/**/*.{crt,key}" # one TLS certificate per service
+    - ".envrc"
+    - ".mcp.json" # MCP server config; often holds API tokens
+  exclude:
+    - "**/.terraform/**" # provider and module cache; terraform init rebuilds it
+
+password:
+  source: pass
+  pass:
+    path: confkoffer/homelab
+```
+
+Credentials: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for a MinIO
+access key. `pass` reads the passphrase from your password store.
+
+### AWS S3 (`aws`)
+
+A k3s cluster with `dev` and `prod` environments. One snapshot holds both,
+so a new machine is set up with a single `unpack`.
+
+```yaml
+name: homelab/k3s
+
+storage:
+  provider: aws
+  bucket: example-org-confkoffer # S3 bucket names are global; pick your own
+  region: eu-central-1
+
+patterns:
+  include:
+    - "terraform/**/backend.tf"
+    - "terraform/**/*.tfvars"
+    - "ansible/inventory/**/{inventory.ini,ansible.cfg}"
+    - "ansible/inventory/**/group_vars/*.yml"
+    - "ansible/files/**/*.json" # e.g. a cloud service-account key
+    - ".envrc"
+  exclude:
+    - "**/.terraform/**"
+
+password:
+  source: command
+  command:
+    argv: ["aws", "secretsmanager", "get-secret-value", "--secret-id", "confkoffer",
+           "--query", "SecretString", "--output", "text"]
+    timeout: 15s
+```
+
+Credentials: the usual AWS environment (`AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`) with `s3:PutObject`, `s3:GetObject`, and
+`s3:ListBucket` on the bucket, plus `secretsmanager:GetSecretValue` for the
+passphrase.
+
+### Azure Blob Storage (`azure`)
+
+An OPNsense firewall managed with Terraform and Ansible. The rendered
+`config.xml` holds the firewall's full state, including VPN keys and users.
+
+```yaml
+name: homelab/opnsense
+
+storage:
+  provider: azure
+  containerid: confkoffer # the account comes from AZURE_STORAGE_ACCOUNT
+
+patterns:
+  include:
+    - "terraform/**/backend.tf"
+    - "terraform/**/*.tfvars"
+    - "ansible/inventory/**/{inventory.ini,vars.yml,ansible.cfg}"
+    - "ansible/files/**/config.xml" # rendered firewall config: rules, VPN keys, users
+    - ".envrc"
+  exclude:
+    - "**/.terraform/**"
+
+password:
+  source: command
+  command:
+    argv: ["az", "keyvault", "secret", "show", "--vault-name", "example-vault",
+           "--name", "confkoffer", "--query", "value", "--output", "tsv"]
+    timeout: 15s
+```
+
+Credentials: `AZURE_STORAGE_ACCOUNT` plus `AZURE_STORAGE_KEY`, a SAS token,
+or a connection string. `az` must be logged in with read access to the Key
+Vault secret.
+
+### Google Cloud Storage (`gcp`)
+
+A container-registry proxy whose Terraform keeps its state in a local
+file. That state holds every secret Terraform knows, so here it is the most
+important file to back up.
+
+```yaml
+name: homelab/registry-proxy
+
+storage:
+  provider: gcp
+  bucket: example-org-confkoffer # project and credentials come from ADC
+
+patterns:
+  include:
+    - "terraform/**/terraform.tfstate" # local state: no remote backend here
+    - "terraform/**/terraform.tfstate.backup"
+    - "terraform/**/*.tfvars"
+    - "ansible/inventory/**/inventory.ini"
+    - "ansible/files/**/*.{crt,key}"
+  exclude:
+    - "**/.terraform/**" # .terraform/terraform.tfstate is backend metadata, not state
+
+password:
+  source: command
+  command:
+    argv: ["gcloud", "secrets", "versions", "access", "latest", "--secret=confkoffer"]
+    timeout: 15s
+```
+
+Credentials: Application Default Credentials
+(`gcloud auth application-default login`, or a service account on the
+host) with object read and write on the bucket, plus
+`secretmanager.versions.access` for the passphrase.
+
+---
+
 ## Password sources
 
 | Source    | When to use                                                  | Notes                                                                      |
