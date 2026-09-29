@@ -120,8 +120,8 @@ func Walk(srcDir string, patterns Patterns) ([]Match, error) {
 	return matches, nil
 }
 
-func compileAll(patterns []string) ([]glob.Glob, error) {
-	out := make([]glob.Glob, 0, len(patterns))
+func compileAll(patterns []string) ([]*glob.Pattern, error) {
+	out := make([]*glob.Pattern, 0, len(patterns))
 	for _, p := range patterns {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -146,7 +146,7 @@ func compileAll(patterns []string) ([]glob.Glob, error) {
 	return out, nil
 }
 
-func matchAny(globs []glob.Glob, s string) bool {
+func matchAny(globs []*glob.Pattern, s string) bool {
 	for _, g := range globs {
 		if g.Match(s) {
 			return true

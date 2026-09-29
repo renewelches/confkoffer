@@ -3,7 +3,7 @@ module github.com/renewelches/confkoffer
 go 1.27
 
 require (
-	github.com/gobwas/glob v0.2.3
+	github.com/gobwas/glob v1.0.0
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.5
 	gocloud.dev v0.46.0
