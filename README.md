@@ -505,10 +505,21 @@ flags; `password.*` is structural rather than per-invocation; and
   candidate if it matches **at least one** include.
 - `patterns.exclude` — patterns. A candidate is dropped if it matches
   **any** exclude. Exclude wins.
-- `**` matches any number of directory segments. `*` matches one segment
-  (does not cross `/`).
-- Ergonomic shortcut: `**/foo` also matches `foo` at depth zero (saves
-  having to write both `*.tf` and `**/*.tf`).
+- `*` matches within one path segment and `?` matches one character;
+  neither crosses `/`. `**` matches across segments.
+- A `**/` segment matches **zero or more** directories, as in gitignore:
+  `**/*.tf` matches `main.tf` and `modules/vpc/main.tf`;
+  `secrets/**/prod.env` matches `secrets/prod.env` and
+  `secrets/eu/prod.env`. Only a whole `**/` segment gets this: in
+  `secrets/**prod.env` the `**` just matches any characters, so it also
+  selects `secrets/notprod.env`.
+- `{a,b}` matches either alternative (`*.{yml,yaml}`); `[abc]`, `[a-z]`,
+  and `[!.]` match one character from, or not from, a set. Escape a
+  literal `*`, `?`, `[`, or `{` with `\`.
+- Quote patterns in YAML. An unquoted value starting with `*` or `{` is
+  not a plain string there.
+- A malformed pattern, such as an unclosed `{` or a trailing `\`, fails
+  `pack` with an `invalid pattern` error before anything is packed.
 - Symlinks are skipped (logged at WARN).
 
 ---

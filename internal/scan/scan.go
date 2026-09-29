@@ -2,7 +2,9 @@
 // explicit include/exclude glob lists.
 //
 // Globs use github.com/gobwas/glob with "/" as the path separator, so
-// "**" matches any number of segments and "*" matches one segment.
+// "*" matches within one segment and "**" across segments. As in
+// gitignore, a "**/" segment also matches zero directories: "a/**/b"
+// selects "a/b" as well as "a/x/b" (see expandDoubleStar).
 // A file is selected iff it matches at least one include and zero
 // excludes (exclude wins on conflict).
 //
@@ -120,33 +122,89 @@ func Walk(srcDir string, patterns Patterns) ([]Match, error) {
 	return matches, nil
 }
 
-func compileAll(patterns []string) ([]glob.Glob, error) {
-	out := make([]glob.Glob, 0, len(patterns))
+// maxDoubleStarDirs caps the "**/" segments in one pattern. Each one
+// doubles the variants expandDoubleStar compiles; real patterns use one
+// or two.
+const maxDoubleStarDirs = 8
+
+func compileAll(patterns []string) ([]*glob.Pattern, error) {
+	out := make([]*glob.Pattern, 0, len(patterns))
 	for _, p := range patterns {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		g, err := glob.Compile(p, '/')
+		variants, err := expandDoubleStar(p)
 		if err != nil {
 			return nil, fmt.Errorf("invalid pattern %q: %w", p, err)
 		}
-		out = append(out, g)
-		// gitignore-style ergonomics: "**/foo" should also match "foo"
-		// at depth zero. gobwas/glob keeps the literal "/" so without
-		// this we'd surprise users by missing root-level files.
-		if rest, ok := strings.CutPrefix(p, "**/"); ok && rest != "" {
-			g2, err := glob.Compile(rest, '/')
+		for _, v := range variants {
+			g, err := glob.Compile(v, '/')
 			if err != nil {
-				return nil, fmt.Errorf("invalid pattern %q: %w", rest, err)
+				return nil, fmt.Errorf("invalid pattern %q: %w", p, err)
 			}
-			out = append(out, g2)
+			out = append(out, g)
 		}
 	}
 	return out, nil
 }
 
-func matchAny(globs []glob.Glob, s string) bool {
+// expandDoubleStar returns p followed by every variant of p with one or
+// more "**/" segments removed. gobwas/glob requires "**/" to consume at
+// least the "/", so on its own "secrets/**/prod.env" misses
+// "secrets/prod.env"; compiling the variants too gives gitignore's
+// zero-or-more-directories semantics. The original comes first so a
+// syntax error is reported against what the user wrote.
+func expandDoubleStar(p string) ([]string, error) {
+	cuts := doubleStarDirs(p)
+	if len(cuts) > maxDoubleStarDirs {
+		return nil, fmt.Errorf("more than %d \"**/\" segments", maxDoubleStarDirs)
+	}
+	variants := []string{p}
+	// Cut from the last offset to the first: removing text to the right
+	// of an offset leaves it valid in every variant built so far.
+	for i := len(cuts) - 1; i >= 0; i-- {
+		at, n := cuts[i], len(variants)
+		for _, v := range variants[:n] {
+			variants = append(variants, v[:at]+v[at+len("**/"):])
+		}
+	}
+	// "**/**/x" yields "**/x" twice, and a bare "**/" yields "".
+	seen := make(map[string]bool, len(variants))
+	out := variants[:0]
+	for _, v := range variants {
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+// doubleStarDirs returns the offset of each "**/" in p that is a whole
+// path segment: at the start of p or right after a "/". Escaped
+// characters and [...] classes are skipped, so "a**/b", `\**/x` and
+// "[**/]" are left alone.
+func doubleStarDirs(p string) []int {
+	var cuts []int
+	inClass := false
+	for i := 0; i < len(p); i++ {
+		switch c := p[i]; {
+		case c == '\\':
+			i++ // the next byte is literal
+		case inClass:
+			inClass = c != ']'
+		case c == '[':
+			inClass = true
+		case strings.HasPrefix(p[i:], "**/") && (i == 0 || p[i-1] == '/'):
+			cuts = append(cuts, i)
+			i += len("**/") - 1
+		}
+	}
+	return cuts
+}
+
+func matchAny(globs []*glob.Pattern, s string) bool {
 	for _, g := range globs {
 		if g.Match(s) {
 			return true
