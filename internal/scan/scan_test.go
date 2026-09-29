@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -167,5 +168,81 @@ func TestWalkDeterministicOrdering(t *testing.T) {
 	}
 	if slices.Compare(relPaths(a), relPaths(b)) != 0 {
 		t.Fatalf("non-deterministic order:\n%v\nvs\n%v", relPaths(a), relPaths(b))
+	}
+}
+
+func TestExpandDoubleStar(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"*.tf", []string{"*.tf"}},
+		{".terraform/**", []string{".terraform/**"}},
+		{"**/*.tf", []string{"**/*.tf", "*.tf"}},
+		{"secrets/**/prod.env", []string{"secrets/**/prod.env", "secrets/prod.env"}},
+		{"a/**/b/**/c", []string{"a/**/b/**/c", "a/**/b/c", "a/b/**/c", "a/b/c"}},
+		{"**/**/x", []string{"**/**/x", "**/x", "x"}},
+		{"**/", []string{"**/"}},
+		// Not whole segments, escaped, or inside a class: left alone.
+		{"a**/b", []string{"a**/b"}},
+		{`\**/x`, []string{`\**/x`}},
+		{"[**/]x", []string{"[**/]x"}},
+	}
+	for _, tt := range tests {
+		got, err := expandDoubleStar(tt.in)
+		if err != nil {
+			t.Fatalf("expandDoubleStar(%q): %v", tt.in, err)
+		}
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("expandDoubleStar(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestExpandDoubleStarLimit(t *testing.T) {
+	p := strings.Repeat("**/", maxDoubleStarDirs+1) + "x"
+	if _, err := expandDoubleStar(p); err == nil {
+		t.Fatalf("expected an error for %d \"**/\" segments", maxDoubleStarDirs+1)
+	}
+}
+
+// A "**/" segment matches zero or more directories, gitignore-style.
+// gobwas/glob v1 alone requires at least one, which would silently drop
+// files from a backup, so this guards against a library change undoing it.
+func TestWalkDoubleStarMatchesZeroOrMoreDirs(t *testing.T) {
+	root := fixture(t)
+	tests := []struct {
+		include string
+		want    string
+	}{
+		{"secrets/**/prod.env", "secrets/prod.env"}, // zero dirs
+		{"sub/**/deep.tf", "sub/dir/deep.tf"},       // one dir
+		{"**/**/deep.tf", "sub/dir/deep.tf"},        // two dirs, repeated segment
+		{"sub/dir/**/deep.tf", "sub/dir/deep.tf"},   // zero dirs, deeper prefix
+		{"**/dir/**/deep.tf", "sub/dir/deep.tf"},    // leading and middle
+	}
+	for _, tt := range tests {
+		got, err := Walk(root, Patterns{Include: []string{tt.include}})
+		if err != nil {
+			t.Fatalf("%s: %v", tt.include, err)
+		}
+		if !slices.Contains(relPaths(got), tt.want) {
+			t.Errorf("include %q: want %q in %v", tt.include, tt.want, relPaths(got))
+		}
+	}
+}
+
+// Excludes share compileAll, so the zero-directory rule applies there too.
+func TestWalkDoubleStarExcludeMatchesZeroDirs(t *testing.T) {
+	root := fixture(t)
+	got, err := Walk(root, Patterns{
+		Include: []string{"**/*"},
+		Exclude: []string{"secrets/**/prod.env"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(relPaths(got), "secrets/prod.env") {
+		t.Fatalf("secrets/prod.env should be excluded: %v", relPaths(got))
 	}
 }
