@@ -94,6 +94,7 @@ func fileURL(c *config.FileConfig) (string, error) {
 	}
 	u := url.URL{Scheme: "file", Path: filepath.ToSlash(c.DirPath)}
 	q := url.Values{}
+	q.Set("no_tmp_dir", "true")
 	q.Set("create_dir", "true")
 	u.RawQuery = q.Encode()
 	return u.String(), nil
