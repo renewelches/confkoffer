@@ -87,7 +87,7 @@ func TestBucketURL(t *testing.T) {
 				ProviderConfig: pcfg("file"),
 				DirPath:        "/mnt/backups/confkoffer",
 			},
-			want: "file:///mnt/backups/confkoffer?create_dir=true",
+			want: "file:///mnt/backups/confkoffer?create_dir=true&no_tmp_dir=true",
 		},
 	}
 
@@ -164,7 +164,7 @@ func TestBucketURLEmitsOnlyKnownParams(t *testing.T) {
 		"s3":     {"region": true, "endpoint": true, "use_path_style": true},
 		"azblob": {},
 		"gs":     {"universe_domain": true},
-		"file":   {"create_dir": true},
+		"file":   {"create_dir": true, "no_tmp_dir": true},
 	}
 	cfgs := []config.BlobConfig{
 		&config.S3Config{ProviderConfig: pcfg("minio"), Bucket: "b", Region: "r", Endpoint: "h:9000", Insecure: true},
